@@ -108,7 +108,10 @@ function initNavbarScroll() {
             window.requestAnimationFrame(() => {
                 const currentScrollY = window.scrollY;
                 
-                if (nav) {
+                if (nav && document.body.classList.contains('home-page')) {
+                    nav.classList.toggle('scrolled', currentScrollY > 100);
+                    nav.classList.toggle('nav-hidden', currentScrollY > lastScrollY && currentScrollY > 500);
+                } else if (nav) {
                     if (currentScrollY > 100) {
                         nav.style.background = 'rgba(2, 26, 13, 0.95)';
                         nav.style.padding = '1rem 4rem';

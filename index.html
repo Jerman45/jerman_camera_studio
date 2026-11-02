@@ -42,7 +42,7 @@
     <!-- Styles -->
     <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
+<body class="home-page">
     <!-- Skip to Content -->
     <a href="#features" class="skip-link">Skip to main content</a>
 
@@ -72,14 +72,14 @@
         
         <ul class="nav-links">
             <li><a href="#features">Features</a></li>
-            <li><a href="#product">LindAV</a></li>
-            <li><a href="#pricing">Pricing</a></li>
-            <li><a href="#testimonials">Reviews</a></li>
+            <li><a href="#validation">Validation</a></li>
+            <li><a href="pages/help.html">User Guide</a></li>
+            <li><a href="#product">Quick Start</a></li>
         </ul>
         
         <div class="nav-cta">
-            <a href="pages/signin.html" class="btn btn-outline">Sign In</a>
-            <a href="pages/download.html" class="btn btn-primary">Get Protected</a>
+            <a href="pages/signin.html" class="nav-signin">Sign In</a>
+            <a href="pages/download.html" class="btn btn-primary">Download</a>
         </div>
     </nav>
 
@@ -88,55 +88,49 @@
         <div class="hero-content">
             <div class="hero-badge">
                 <span class="badge-dot"></span>
-                Android Security Reimagined
+                SECURITY FOR ANDROID AND WINDOWS
             </div>
-            <h1>Complete Protection for Your <span>Digital Life</span></h1>
-            <p>LindAV delivers enterprise-grade security to your Android device. Real-time threat detection, privacy protection, and performance optimization - all in one powerful app.</p>
+            <h1>Protection you can count on. <span>Confidence built in.</span></h1>
+            <p>Scan your device, check your network, and take control of your privacy with LindAV. Download the Android app or Windows installer and get started in minutes.</p>
             <div class="hero-buttons">
-                <a href="pages/download.html" class="btn btn-primary btn-large">Download Free</a>
-                <a href="#product" class="btn btn-outline btn-large">Watch Demo</a>
+                <a href="pages/download.html" class="btn btn-primary btn-large">Download LindAV</a>
+                <a href="pages/help.html" class="btn btn-outline btn-large">Read the User Guide</a>
             </div>
+            <p class="hero-note">Android 6+ and Windows 10/11 <span aria-hidden="true">·</span> No account needed to download</p>
         </div>
         <div class="hero-visual">
-            <div class="shield-container">
-                <div class="shield-glow"></div>
-                <div class="orbit orbit-1">
-                    <div class="orbit-dot"></div>
+            <div class="product-preview">
+                <div class="preview-topbar">
+                    <span class="preview-mark" aria-hidden="true">✓</span>
+                    <span>LindAV · Device scans</span>
+                    <span class="preview-status"><span></span> Protected</span>
                 </div>
-                <div class="orbit orbit-2">
-                    <div class="orbit-dot"></div>
+                <div class="preview-content">
+                    <div class="preview-copy">
+                        <span class="preview-eyebrow">YOUR DEVICE</span>
+                        <h2>Protection starts with a scan.</h2>
+                        <p>Check for suspicious files and stay on top of your device security.</p>
+                        <span class="preview-action">Start a quick scan <span aria-hidden="true">→</span></span>
+                    </div>
+                    <div class="preview-screen">
+                        <img src="images/phone3.png" alt="LindAV device scan screen showing device protection status">
+                    </div>
                 </div>
-                <svg class="shield-main" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M100 10L180 50V150C180 180 145 210 100 230C55 210 20 180 20 150V50L100 10Z" fill="rgba(14, 138, 69, 0.3)" stroke="rgba(74, 232, 140, 0.5)" stroke-width="2"/>
-                    <path d="M100 30L160 60V140C160 165 135 190 100 205C65 190 40 165 40 140V60L100 30Z" fill="rgba(14, 138, 69, 0.5)" stroke="rgba(74, 232, 140, 0.7)" stroke-width="2"/>
-                    <path d="M70 100L90 115L130 80" stroke="#4AE88C" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
             </div>
         </div>
     </section>
 
-    <!-- Stats Section -->
-    <section class="stats">
-        <div class="stat-item">
-            <div class="stat-number">50M+</div>
-            <div class="stat-label">Protected Devices</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-number">99.9%</div>
-            <div class="stat-label">Threat Detection Rate</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-number">24/7</div>
-            <div class="stat-label">Real-time Monitoring</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-number">4.8★</div>
-            <div class="stat-label">Play Store Rating</div>
-        </div>
+    <!-- Supported Platforms -->
+    <section class="platform-strip" aria-label="Supported platforms">
+        <span class="platform-label">Available for</span>
+        <span class="platform-chip">Android</span>
+        <span class="platform-chip">Windows</span>
+        <span class="platform-chip">APK download</span>
+        <span class="platform-chip">Desktop setup</span>
     </section>
 
     <!-- Trust Badges -->
-    <section class="trust-badges">
+    <section class="trust-badges" id="validation" aria-label="Security standards and verification">
         <div class="trust-badge">
             <div class="trust-icon" aria-hidden="true">✓</div>
             <span>AV-TEST Certified</span>
@@ -163,8 +157,8 @@
     <section class="features" id="features">
         <div class="section-header">
             <div class="section-tag">Features</div>
-            <h2 class="section-title">Reliable Solutions for Your Business</h2>
-            <p class="section-subtitle">Advanced protection powered by AI and machine learning to keep your devices safe from emerging threats.</p>
+            <h2 class="section-title">Everything you need to stay protected</h2>
+            <p class="section-subtitle">Explore the tools that help keep your device, privacy, and connection safer every day.</p>
         </div>
         <div class="features-grid">
             <div class="feature-card">
@@ -207,7 +201,7 @@
                 <div class="phone-showcase">
                     <div class="phone-mockup center">
                         <div class="phone-frame">
-                            <img src="images/phone2.png" alt="LindAV Welcome">
+                            <img src="images/phone3.png" alt="LindAV device scan and protection status">
                         </div>
                         <div class="phone-label">Welcome</div>
                     </div>
@@ -240,6 +234,26 @@
                 </ul>
                 <a href="pages/download.html" class="btn btn-primary btn-large">Get LindAV Now</a>
             </div>
+        </div>
+    </section>
+
+    <!-- Protection at a glance -->
+    <section class="stats" aria-label="LindAV protection highlights">
+        <div class="stat-item">
+            <div class="stat-number">50M+</div>
+            <div class="stat-label">Protected Devices</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">99.9%</div>
+            <div class="stat-label">Threat Detection Rate</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">24/7</div>
+            <div class="stat-label">Real-time Monitoring</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">4.8★</div>
+            <div class="stat-label">Play Store Rating</div>
         </div>
     </section>
 
