@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 
 import 'media_library.dart';
+import 'photo_processing.dart';
 
 const _background = Color(0xFF030704);
 const _panel = Color(0xFF101A12);
@@ -37,6 +39,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   bool _isBusy = false;
   bool _showGrid = false;
   bool _isRecording = false;
+  StudioCaptureSettings _captureSettings = const StudioCaptureSettings();
   late CameraCaptureMode _mode = widget.initialMode;
   FlashMode _flashMode = FlashMode.off;
   double _minZoom = 1;
@@ -97,6 +100,11 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
 
     CameraController? candidate;
     try {
+      final settings = await MediaLibrary.loadSettings();
+      if (!mounted || token != _initializationToken) return;
+      _captureSettings = settings;
+      setState(() => _showGrid = settings.showCompositionGrid);
+
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         throw StateError('No cameras were found on this device.');
@@ -109,23 +117,41 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
               (camera) => camera.lensDirection == CameraLensDirection.back,
               orElse: () => cameras.first,
             );
-      candidate = CameraController(
+      final resolution = settings.resolution == 'High'
+          ? ResolutionPreset.high
+          : ResolutionPreset.max;
+      final fps = settings.framesPerSecond == 60 ? 60 : null;
+      var activeController = CameraController(
         selectedCamera,
-        ResolutionPreset.max,
+        resolution,
         enableAudio: true,
+        fps: fps,
       );
-      await candidate.initialize();
-      final minZoom = await candidate.getMinZoomLevel();
-      final maxZoom = await candidate.getMaxZoomLevel();
-      final minExposure = await candidate.getMinExposureOffset();
-      final maxExposure = await candidate.getMaxExposureOffset();
+      candidate = activeController;
+      try {
+        await activeController.initialize();
+      } on CameraException {
+        if (fps == null) rethrow;
+        await activeController.dispose();
+        activeController = CameraController(
+          selectedCamera,
+          resolution,
+          enableAudio: true,
+        );
+        candidate = activeController;
+        await activeController.initialize();
+      }
+      final minZoom = await activeController.getMinZoomLevel();
+      final maxZoom = await activeController.getMaxZoomLevel();
+      final minExposure = await activeController.getMinExposureOffset();
+      final maxExposure = await activeController.getMaxExposureOffset();
 
       if (!mounted || token != _initializationToken) {
         await candidate.dispose();
         return;
       }
 
-      _controller = candidate;
+      _controller = activeController;
       _camera = selectedCamera;
       setState(() {
         _minZoom = minZoom;
@@ -306,7 +332,25 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   Future<void> _saveCapture(String path, {required bool isVideo}) async {
     StudioMedia media;
     try {
-      media = await MediaLibrary.addCapture(path, isVideo: isVideo);
+      if (!isVideo && _captureSettings.autoEnhanceCaptures) {
+        final bytes = await compute<Map<String, Object>, Uint8List>(
+          processPhoto,
+          {
+            'path': path,
+            'brightness': 1.0,
+            'contrast': 1.0,
+            'saturation': 1.0,
+            'hue': 0.0,
+            'rotation': 0,
+            'cropRatio': -1.0,
+            'watermark': _captureSettings.addWatermark,
+            'autoEnhance': true,
+          },
+        );
+        media = await MediaLibrary.addEditedPhoto(bytes);
+      } else {
+        media = await MediaLibrary.addCapture(path, isVideo: isVideo);
+      }
       if (mounted) setState(() => _lastCapturePath = media.path);
       widget.onCaptureSaved(media);
     } catch (error) {

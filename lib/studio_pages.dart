@@ -4,10 +4,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
-import 'package:image/image.dart' as img;
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import 'media_library.dart';
+import 'photo_processing.dart';
 
 const studioBackground = Color(0xFF030704);
 const studioSurface = Color(0xFF0D160F);
@@ -15,11 +16,13 @@ const studioSurfaceLight = Color(0xFF142318);
 const studioGreen = Color(0xFF00E85A);
 const studioMuted = Color(0xFF9AAF9E);
 const studioLine = Color(0xFF1E3423);
+const _studioMediaChannel = MethodChannel('jerman.camera/media');
 
 enum StudioAction {
   photo,
   video,
   autoEdit,
+  importMedia,
   gallery,
   projects,
   profile,
@@ -319,6 +322,14 @@ class StudioHomePage extends StatelessWidget {
               },
             ),
             _MenuTile(
+              icon: Icons.add_photo_alternate_outlined,
+              label: 'Import photos or videos',
+              onTap: () {
+                Navigator.pop(context);
+                onAction(StudioAction.importMedia);
+              },
+            ),
+            _MenuTile(
               icon: Icons.folder_open_outlined,
               label: 'Projects',
               onTap: () {
@@ -547,11 +558,13 @@ class StudioGalleryPage extends StatefulWidget {
     required this.media,
     required this.onOpen,
     required this.onDelete,
+    required this.onImport,
   });
 
   final List<StudioMedia> media;
   final ValueChanged<StudioMedia> onOpen;
   final ValueChanged<StudioMedia> onDelete;
+  final VoidCallback onImport;
 
   @override
   State<StudioGalleryPage> createState() => _StudioGalleryPageState();
@@ -573,9 +586,16 @@ class _StudioGalleryPageState extends State<StudioGalleryPage> {
       body: SafeArea(
         child: Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 17, vertical: 6),
-              child: StudioHeader(title: 'My Gallery'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 6),
+              child: StudioHeader(
+                title: 'My Gallery',
+                trailing: IconButton(
+                  tooltip: 'Import photo or video',
+                  onPressed: widget.onImport,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                ),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(17, 4, 17, 12),
@@ -951,11 +971,56 @@ class StudioSettingsPage extends StatefulWidget {
 }
 
 class _StudioSettingsPageState extends State<StudioSettingsPage> {
-  String _quality = '4K UHD';
+  String _quality = 'High';
+  int _framesPerSecond = 30;
   bool _grid = true;
   bool _watermark = false;
   bool _notifications = true;
   bool _autoEnhance = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPreferences());
+  }
+
+  Future<void> _loadPreferences() async {
+    try {
+      final settings = await MediaLibrary.loadSettings();
+      if (!mounted) return;
+      setState(() {
+        _quality = settings.resolution;
+        _framesPerSecond = settings.framesPerSecond;
+        _grid = settings.showCompositionGrid;
+        _watermark = settings.addWatermark;
+        _autoEnhance = settings.autoEnhanceCaptures;
+      });
+    } catch (error) {
+      if (mounted) _showSettingsMessage('Settings could not be loaded: $error');
+    }
+  }
+
+  Future<void> _savePreferences() async {
+    try {
+      await MediaLibrary.saveSettings(
+        StudioCaptureSettings(
+          resolution: _quality,
+          framesPerSecond: _framesPerSecond,
+          addWatermark: _watermark,
+          autoEnhanceCaptures: _autoEnhance,
+          showCompositionGrid: _grid,
+        ),
+      );
+    } catch (error) {
+      if (mounted) _showSettingsMessage('Settings could not be saved: $error');
+    }
+  }
+
+  void _showSettingsMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1015,7 +1080,7 @@ class _StudioSettingsPageState extends State<StudioSettingsPage> {
                 _SettingsTile(
                   icon: Icons.high_quality_outlined,
                   title: 'Photo quality',
-                  subtitle: 'Choose your capture resolution',
+                  subtitle: 'Maximum is limited by your phone camera',
                   trailing: DropdownButton<String>(
                     value: _quality,
                     underline: const SizedBox.shrink(),
@@ -1027,14 +1092,40 @@ class _StudioSettingsPageState extends State<StudioSettingsPage> {
                     ),
                     items: const [
                       DropdownMenuItem(value: 'High', child: Text('High')),
-                      DropdownMenuItem(value: '4K UHD', child: Text('4K UHD')),
                       DropdownMenuItem(
-                        value: 'Maximum',
+                        value: 'Maximum supported',
                         child: Text('Maximum'),
                       ),
                     ],
                     onChanged: (value) {
-                      if (value != null) setState(() => _quality = value);
+                      if (value != null) {
+                        setState(() => _quality = value);
+                        unawaited(_savePreferences());
+                      }
+                    },
+                  ),
+                ),
+                _SettingsTile(
+                  icon: Icons.speed_rounded,
+                  title: 'Video frame rate',
+                  subtitle: '60 fps falls back automatically if unsupported',
+                  trailing: DropdownButton<int>(
+                    value: _framesPerSecond,
+                    underline: const SizedBox.shrink(),
+                    dropdownColor: studioSurface,
+                    style: const TextStyle(
+                      color: studioGreen,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 30, child: Text('30 fps')),
+                      DropdownMenuItem(value: 60, child: Text('60 fps')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _framesPerSecond = value);
+                      unawaited(_savePreferences());
                     },
                   ),
                 ),
@@ -1045,7 +1136,10 @@ class _StudioSettingsPageState extends State<StudioSettingsPage> {
                   trailing: Switch.adaptive(
                     value: _grid,
                     activeTrackColor: studioGreen,
-                    onChanged: (value) => setState(() => _grid = value),
+                    onChanged: (value) {
+                      setState(() => _grid = value);
+                      unawaited(_savePreferences());
+                    },
                   ),
                 ),
                 _SettingsTile(
@@ -1055,7 +1149,10 @@ class _StudioSettingsPageState extends State<StudioSettingsPage> {
                   trailing: Switch.adaptive(
                     value: _watermark,
                     activeTrackColor: studioGreen,
-                    onChanged: (value) => setState(() => _watermark = value),
+                    onChanged: (value) {
+                      setState(() => _watermark = value);
+                      unawaited(_savePreferences());
+                    },
                   ),
                 ),
               ],
@@ -1071,7 +1168,10 @@ class _StudioSettingsPageState extends State<StudioSettingsPage> {
                   trailing: Switch.adaptive(
                     value: _autoEnhance,
                     activeTrackColor: studioGreen,
-                    onChanged: (value) => setState(() => _autoEnhance = value),
+                    onChanged: (value) {
+                      setState(() => _autoEnhance = value);
+                      unawaited(_savePreferences());
+                    },
                   ),
                 ),
                 _SettingsTile(
@@ -1320,16 +1420,49 @@ class StudioPhotoEditorPage extends StatefulWidget {
 class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   static const _filters = [
     _PhotoFilter('Natural', 1, 0, 1),
-    _PhotoFilter('Vivid', 1.14, 0, 1.28),
-    _PhotoFilter('Cool', 1.03, -8, 1.05),
-    _PhotoFilter('Warm', 1.04, 8, 1.12),
+    _PhotoFilter('Professional', 1.12, 0, 1.08),
+    _PhotoFilter('Cinematic', 1.14, -3, .88),
   ];
 
   int _selectedFilter = 0;
   double _brightness = 1;
+  double _contrast = 1;
+  double _saturation = 1;
+  double _cropRatio = -1;
+  int _rotation = 0;
+  String _adjustment = 'Brightness';
+  bool _isShowingOriginal = false;
+  bool _autoEnhance = false;
+  bool _watermark = false;
+  bool _defaultWatermark = false;
   bool _isSaving = false;
 
   _PhotoFilter get _filter => _filters[_selectedFilter];
+  double get _adjustmentValue => switch (_adjustment) {
+    'Brightness' => _brightness,
+    'Contrast' => _contrast,
+    _ => _saturation,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPhotoSettings());
+  }
+
+  Future<void> _loadPhotoSettings() async {
+    try {
+      final settings = await MediaLibrary.loadSettings();
+      if (mounted) {
+        setState(() {
+          _watermark = settings.addWatermark;
+          _defaultWatermark = settings.addWatermark;
+        });
+      }
+    } catch (error) {
+      if (mounted) _showEditorMessage('Settings could not be loaded: $error');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1343,44 +1476,87 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
               StudioHeader(
                 title: 'Photo Editor',
                 showBack: true,
-                trailing: FilledButton(
-                  onPressed: _isSaving ? null : _saveEditedPhoto,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: studioGreen,
-                    foregroundColor: studioBackground,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    minimumSize: const Size(52, 36),
-                  ),
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text(
-                          'Save',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Reset edits',
+                      onPressed: _isSaving ? null : _resetEdits,
+                      icon: const Icon(Icons.undo_rounded),
+                    ),
+                    FilledButton(
+                      onPressed: _isSaving ? null : _saveEditedPhoto,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: studioGreen,
+                        foregroundColor: studioBackground,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        minimumSize: const Size(52, 36),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Save',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 7),
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    width: double.infinity,
-                    color: studioSurface,
-                    child: ColorFiltered(
-                      colorFilter: _previewFilter(_filter, _brightness),
-                      child: Image.file(
-                        File(widget.media.path),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const _EmptyState(
-                              icon: Icons.broken_image_outlined,
-                              title: 'Photo unavailable',
-                              message: 'This image could not be opened.',
+                child: GestureDetector(
+                  onLongPressStart: (_) =>
+                      setState(() => _isShowingOriginal = true),
+                  onLongPressEnd: (_) =>
+                      setState(() => _isShowingOriginal = false),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: double.infinity,
+                      color: studioSurface,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          if (_cropRatio > 0 && !_isShowingOriginal)
+                            AspectRatio(
+                              aspectRatio: _cropRatio,
+                              child: _photoPreview(),
+                            )
+                          else
+                            _photoPreview(),
+                          Positioned(
+                            left: 12,
+                            top: 12,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                child: Text(
+                                  _isShowingOriginal
+                                      ? 'ORIGINAL'
+                                      : _autoEnhance
+                                      ? 'SMART ENHANCE ON SAVE'
+                                      : 'HOLD TO COMPARE',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
                             ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1399,7 +1575,12 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                       label: filter.name,
                       selected: index == _selectedFilter,
                       media: widget.media,
-                      filter: _previewFilter(filter, _brightness),
+                      filter: _previewFilter(
+                        filter,
+                        _brightness,
+                        _contrast,
+                        _saturation,
+                      ),
                       onTap: () => setState(() => _selectedFilter = index),
                     );
                   },
@@ -1408,25 +1589,44 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
               const SizedBox(height: 9),
               Row(
                 children: [
-                  const Icon(
-                    Icons.brightness_6_outlined,
-                    color: studioMuted,
-                    size: 18,
+                  DropdownButton<String>(
+                    value: _adjustment,
+                    underline: const SizedBox.shrink(),
+                    dropdownColor: studioSurface,
+                    style: const TextStyle(color: studioMuted, fontSize: 10),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Brightness',
+                        child: Text('Bright'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Contrast',
+                        child: Text('Contrast'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Saturation',
+                        child: Text('Color'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _adjustment = value);
+                    },
                   ),
                   Expanded(
                     child: Slider(
-                      value: _brightness,
-                      min: .5,
-                      max: 1.5,
-                      onChanged: (value) => setState(() => _brightness = value),
-                    ),
-                  ),
-                  const SizedBox(
-                    width: 48,
-                    child: Text(
-                      'Adjust',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(color: studioMuted, fontSize: 11),
+                      value: _adjustmentValue,
+                      min: _adjustment == 'Brightness' ? .5 : .5,
+                      max: _adjustment == 'Brightness' ? 1.5 : 1.7,
+                      onChanged: (value) => setState(() {
+                        switch (_adjustment) {
+                          case 'Brightness':
+                            _brightness = value;
+                          case 'Contrast':
+                            _contrast = value;
+                          case 'Saturation':
+                            _saturation = value;
+                        }
+                      }),
                     ),
                   ),
                 ],
@@ -1436,36 +1636,47 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                   _EditorTool(
                     icon: Icons.crop_rounded,
                     label: 'Crop',
+                    onTap: _chooseCropRatio,
+                  ),
+                  _EditorTool(
+                    icon: Icons.rotate_right_rounded,
+                    label: 'Rotate',
                     onTap: () =>
-                        _showEditorMessage('Crop controls are ready to add.'),
+                        setState(() => _rotation = (_rotation + 1) % 4),
                   ),
                   _EditorTool(
                     icon: Icons.tune_rounded,
                     label: 'Adjust',
-                    onTap: () => _showEditorMessage(
-                      'Use the brightness slider to adjust this photo.',
-                    ),
-                  ),
-                  _EditorTool(
-                    icon: Icons.palette_outlined,
-                    label: 'Filters',
                     selected: true,
-                    onTap: () => setState(() {}),
+                    onTap: _chooseAdjustment,
                   ),
                   _EditorTool(
                     icon: Icons.auto_awesome_outlined,
-                    label: 'Effects',
-                    onTap: () =>
-                        _showEditorMessage('More effects are coming soon.'),
+                    label: 'Enhance',
+                    onTap: () {
+                      setState(() {
+                        _autoEnhance = !_autoEnhance;
+                        if (_autoEnhance) _selectedFilter = 1;
+                      });
+                      _showEditorMessage(
+                        _autoEnhance
+                            ? 'On-device smart enhancement enabled. No AI model or internet is used.'
+                            : 'Smart enhancement disabled.',
+                      );
+                    },
                   ),
                   _EditorTool(
-                    icon: Icons.more_horiz_rounded,
-                    label: 'More',
-                    onTap: () => _showEditorMessage(
-                      'More editing tools are coming soon.',
-                    ),
+                    icon: Icons.branding_watermark_outlined,
+                    label: 'Watermark',
+                    selected: _watermark,
+                    onTap: () => setState(() => _watermark = !_watermark),
                   ),
                 ],
+              ),
+              const Text(
+                'Natural · Professional · Cinematic  |  On-device processing on save',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: studioMuted, fontSize: 9),
               ),
             ],
           ),
@@ -1478,13 +1689,17 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
     setState(() => _isSaving = true);
     try {
       final bytes = await compute<Map<String, Object>, Uint8List>(
-        _renderEditedPhoto,
+        processPhoto,
         {
           'path': widget.media.path,
           'brightness': _brightness,
-          'contrast': _filter.contrast,
-          'saturation': _filter.saturation,
+          'contrast': _filter.contrast * _contrast,
+          'saturation': _filter.saturation * _saturation,
           'hue': _filter.hue,
+          'rotation': _rotation,
+          'cropRatio': _cropRatio,
+          'watermark': _watermark,
+          'autoEnhance': _autoEnhance,
         },
       );
       final saved = await MediaLibrary.addEditedPhoto(bytes);
@@ -1511,28 +1726,76 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
     }
   }
 
+  Widget _photoPreview() {
+    final image = Image.file(
+      File(widget.media.path),
+      fit: _isShowingOriginal ? BoxFit.contain : BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const _EmptyState(
+        icon: Icons.broken_image_outlined,
+        title: 'Photo unavailable',
+        message: 'This image could not be opened.',
+      ),
+    );
+    if (_isShowingOriginal) return image;
+    return ColorFiltered(
+      colorFilter: _previewFilter(_filter, _brightness, _contrast, _saturation),
+      child: RotatedBox(quarterTurns: _rotation, child: image),
+    );
+  }
+
+  Future<void> _chooseCropRatio() async {
+    const ratios = <String, double>{
+      'Original': -1,
+      'Square': 1,
+      'Portrait 4:5': .8,
+      'Landscape 16:9': 16 / 9,
+    };
+    final selected = await showModalBottomSheet<double>(
+      context: context,
+      backgroundColor: studioSurface,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final entry in ratios.entries)
+              ListTile(
+                title: Text(entry.key),
+                trailing: _cropRatio == entry.value
+                    ? const Icon(Icons.check_rounded, color: studioGreen)
+                    : null,
+                onTap: () => Navigator.pop(context, entry.value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) setState(() => _cropRatio = selected);
+  }
+
+  void _chooseAdjustment() {
+    setState(() => _adjustment = 'Brightness');
+  }
+
+  void _resetEdits() {
+    setState(() {
+      _selectedFilter = 0;
+      _brightness = 1;
+      _contrast = 1;
+      _saturation = 1;
+      _cropRatio = -1;
+      _rotation = 0;
+      _autoEnhance = false;
+      _watermark = _defaultWatermark;
+      _isShowingOriginal = false;
+    });
+  }
+
   void _showEditorMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
-}
-
-Uint8List _renderEditedPhoto(Map<String, Object> settings) {
-  final path = settings['path']! as String;
-  final original = img.decodeImage(File(path).readAsBytesSync());
-  if (original == null) {
-    throw const FormatException('Unsupported or invalid photo.');
-  }
-  final oriented = img.bakeOrientation(original);
-  final edited = img.adjustColor(
-    oriented,
-    brightness: settings['brightness']! as double,
-    contrast: settings['contrast']! as double,
-    saturation: settings['saturation']! as double,
-    hue: settings['hue']! as double,
-  );
-  return Uint8List.fromList(img.encodeJpg(edited, quality: 94));
 }
 
 class _PhotoFilter {
@@ -1544,16 +1807,24 @@ class _PhotoFilter {
   final double saturation;
 }
 
-ColorFilter _previewFilter(_PhotoFilter filter, double brightness) {
-  if (filter.name == 'Natural' && brightness == 1) {
+ColorFilter _previewFilter(
+  _PhotoFilter filter,
+  double brightness,
+  double manualContrast,
+  double manualSaturation,
+) {
+  if (filter.name == 'Natural' &&
+      brightness == 1 &&
+      manualContrast == 1 &&
+      manualSaturation == 1) {
     return const ColorFilter.mode(Colors.transparent, BlendMode.srcOver);
   }
-  final saturation = filter.saturation;
+  final saturation = filter.saturation * manualSaturation;
   final inverse = 1 - saturation;
   final red = .213 * inverse;
   final green = .715 * inverse;
   final blue = .072 * inverse;
-  final scale = filter.contrast * brightness;
+  final scale = filter.contrast * manualContrast * brightness;
   return ColorFilter.matrix([
     (red + saturation) * scale,
     green * scale,
@@ -1639,10 +1910,12 @@ class StudioVideoEditorPage extends StatefulWidget {
     super.key,
     required this.media,
     required this.onProjectSaved,
+    required this.onMediaExported,
   });
 
   final StudioMedia media;
   final ValueChanged<StudioProject> onProjectSaved;
+  final ValueChanged<StudioMedia> onMediaExported;
 
   @override
   State<StudioVideoEditorPage> createState() => _StudioVideoEditorPageState();
@@ -1656,7 +1929,10 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
   String _transition = 'None';
   String _titleText = '';
   String _musicTrack = 'Original audio';
-  int _splitCount = 0;
+  RangeValues _trimRange = const RangeValues(0, 1);
+  int? _splitPointMs;
+  int _lastTimelineRefreshMs = -1000;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -1676,6 +1952,11 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
     try {
       await controller.initialize();
       await controller.setLooping(true);
+      _trimRange = RangeValues(
+        0,
+        controller.value.duration.inMilliseconds.toDouble(),
+      );
+      controller.addListener(_onPlaybackPositionChanged);
       if (!mounted) return;
       setState(() => _loading = false);
     } catch (error) {
@@ -1701,18 +1982,34 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
               StudioHeader(
                 title: 'Video Editor',
                 showBack: true,
-                trailing: FilledButton(
-                  onPressed: _saveProject,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: studioGreen,
-                    foregroundColor: studioBackground,
-                    padding: const EdgeInsets.symmetric(horizontal: 13),
-                    minimumSize: const Size(56, 36),
-                  ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Save project',
+                      onPressed: _isExporting ? null : _saveProject,
+                      icon: const Icon(Icons.bookmark_add_outlined),
+                    ),
+                    FilledButton(
+                      onPressed: _isExporting ? null : _exportVideo,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: studioGreen,
+                        foregroundColor: studioBackground,
+                        padding: const EdgeInsets.symmetric(horizontal: 13),
+                        minimumSize: const Size(56, 36),
+                      ),
+                      child: _isExporting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Export',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 7),
@@ -1761,7 +2058,7 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Save keeps your edit settings as a project. Video export is not available yet.',
+                'Export renders trimmed MP4 clips. Music, titles, speed and transitions remain project settings.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: studioMuted, fontSize: 9),
               ),
@@ -1770,6 +2067,18 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
         ),
       ),
     );
+  }
+
+  void _onPlaybackPositionChanged() {
+    final controller = _controller;
+    if (!mounted || controller == null) return;
+    final positionMs = controller.value.position.inMilliseconds;
+    if (positionMs - _lastTimelineRefreshMs < 150 &&
+        positionMs >= _lastTimelineRefreshMs) {
+      return;
+    }
+    _lastTimelineRefreshMs = positionMs;
+    setState(() {});
   }
 
   Widget _buildVideoPreview(VideoPlayerController? controller) {
@@ -1871,7 +2180,7 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
         ),
         IconButton(
           tooltip: 'Split clip',
-          onPressed: () => setState(() => _splitCount++),
+          onPressed: _splitClipAtPlayhead,
           icon: const Icon(Icons.content_cut_rounded),
         ),
         const Spacer(),
@@ -1899,6 +2208,12 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
     final progress = totalMilliseconds > 0
         ? position.inMilliseconds / totalMilliseconds
         : 0.0;
+    final rangeStart = _trimRange.start
+        .clamp(0, totalMilliseconds.toDouble())
+        .toDouble();
+    final rangeEnd = _trimRange.end
+        .clamp(rangeStart, totalMilliseconds.toDouble())
+        .toDouble();
     return Column(
       children: [
         Container(
@@ -1941,11 +2256,11 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
                   ],
                 ),
               ),
-              if (_splitCount > 0)
+              if (_splitPointMs != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: Text(
-                    '$_splitCount',
+                    '1',
                     style: const TextStyle(color: studioGreen, fontSize: 10),
                   ),
                 ),
@@ -1953,6 +2268,38 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
           ),
         ),
         const SizedBox(height: 4),
+        Row(
+          children: [
+            const Text(
+              'Trim range',
+              style: TextStyle(color: studioMuted, fontSize: 9),
+            ),
+            Expanded(
+              child: RangeSlider(
+                values: RangeValues(rangeStart, rangeEnd),
+                min: 0,
+                max: totalMilliseconds > 0 ? totalMilliseconds.toDouble() : 1,
+                onChanged: totalMilliseconds < 500
+                    ? null
+                    : (values) {
+                        setState(() {
+                          _trimRange = values;
+                          final split = _splitPointMs;
+                          if (split != null &&
+                              (split <= values.start || split >= values.end)) {
+                            _splitPointMs = null;
+                          }
+                        });
+                      },
+              ),
+            ),
+            Text(
+              '${_formatVideoTime(Duration(milliseconds: rangeStart.round()))}–'
+              '${_formatVideoTime(Duration(milliseconds: rangeEnd.round()))}',
+              style: const TextStyle(color: studioMuted, fontSize: 9),
+            ),
+          ],
+        ),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1977,12 +2324,13 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
           icon: Icons.content_cut_rounded,
           label: 'Trim',
           selected: true,
-          onTap: () => _showMessage('Drag the timeline to preview your clip.'),
+          onTap: () =>
+              _showMessage('Set the trim start and end on the range slider.'),
         ),
         _EditorTool(
           icon: Icons.call_split_rounded,
           label: 'Split',
-          onTap: () => setState(() => _splitCount++),
+          onTap: _splitClipAtPlayhead,
         ),
         _EditorTool(
           icon: Icons.speed_rounded,
@@ -2001,6 +2349,103 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
         ),
       ],
     );
+  }
+
+  void _splitClipAtPlayhead() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final positionMs = controller.value.position.inMilliseconds;
+    final startMs = _trimRange.start.round();
+    final endMs = _trimRange.end.round();
+    if (positionMs - startMs < 500 || endMs - positionMs < 500) {
+      _showMessage(
+        'Move the playhead inside the selected trim range to split.',
+      );
+      return;
+    }
+    setState(() {
+      _splitPointMs = _splitPointMs == positionMs ? null : positionMs;
+    });
+  }
+
+  Future<void> _exportVideo() async {
+    final startMs = _trimRange.start.round();
+    final endMs = _trimRange.end.round();
+    if (endMs - startMs < 500) {
+      _showMessage('Choose a trim range of at least half a second.');
+      return;
+    }
+
+    final splitPoint = _splitPointMs;
+    final boundaries = <int>[
+      startMs,
+      if (splitPoint != null && splitPoint > startMs && splitPoint < endMs)
+        splitPoint,
+      endMs,
+    ];
+    setState(() => _isExporting = true);
+    var exportedCount = 0;
+    var deviceGalleryCount = 0;
+    String? gallerySaveError;
+    try {
+      for (var index = 0; index < boundaries.length - 1; index++) {
+        final outputPath = await _studioMediaChannel.invokeMethod<String>(
+          'trimVideo',
+          {
+            'path': widget.media.path,
+            'startMs': boundaries[index],
+            'endMs': boundaries[index + 1],
+          },
+        );
+        if (outputPath == null || outputPath.isEmpty) {
+          throw StateError('The video exporter returned no output file.');
+        }
+        try {
+          final media = await MediaLibrary.addCapture(
+            outputPath,
+            isVideo: true,
+          );
+          widget.onMediaExported(media);
+          exportedCount++;
+          try {
+            var hasAccess = await Gal.hasAccess();
+            if (!hasAccess) hasAccess = await Gal.requestAccess();
+            if (!hasAccess) {
+              gallerySaveError ??= 'gallery access was denied';
+            } else {
+              await Gal.putVideo(media.path);
+              deviceGalleryCount++;
+            }
+          } catch (error) {
+            gallerySaveError = '$error';
+          }
+        } finally {
+          final temporaryOutput = File(outputPath);
+          if (await temporaryOutput.exists()) {
+            await temporaryOutput.delete();
+          }
+        }
+      }
+      if (mounted) {
+        final gallerySaveFailures = exportedCount - deviceGalleryCount;
+        final deviceMessage = gallerySaveFailures == 0
+            ? ' and device gallery'
+            : ', but $gallerySaveFailures could not be copied to the device gallery (${gallerySaveError ?? 'gallery save failed'})';
+        _showMessage(
+          'Exported $exportedCount clip${exportedCount == 1 ? '' : 's'} to Jerman Gallery$deviceMessage.',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage(
+          exportedCount == 0
+              ? 'Video export failed: $error'
+              : 'Export stopped after $exportedCount clip${exportedCount == 1 ? '' : 's'}: $error',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   Future<void> _chooseSpeed() async {
@@ -2111,7 +2556,8 @@ class _StudioVideoEditorPageState extends State<StudioVideoEditorPage> {
         id: '${widget.media.path}:${DateTime.now().microsecondsSinceEpoch}',
         mediaPath: widget.media.path,
         isVideo: true,
-        filter: '$_transition · $_musicTrack · $_splitCount splits',
+        filter:
+            '$_transition · $_musicTrack · ${_splitPointMs == null ? 0 : 1} split',
         speed: _speed,
         title: _titleText.isEmpty ? 'Video Project' : _titleText,
         savedAt: DateTime.now(),

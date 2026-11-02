@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'camera_screen.dart';
 import 'media_library.dart';
@@ -316,6 +317,7 @@ class _StudioShellState extends State<StudioShell> {
                 media: _media,
                 onOpen: _openEditor,
                 onDelete: _deleteMedia,
+                onImport: _importMedia,
               ),
               StudioProjectsPage(
                 projects: _projects,
@@ -373,6 +375,8 @@ class _StudioShellState extends State<StudioShell> {
         _openRecentForEditing();
       case StudioAction.gallery:
         setState(() => _selectedTab = 1);
+      case StudioAction.importMedia:
+        unawaited(_importMedia());
       case StudioAction.projects:
       case StudioAction.templates:
         setState(() => _selectedTab = 2);
@@ -385,6 +389,50 @@ class _StudioShellState extends State<StudioShell> {
       case StudioAction.filters:
       case StudioAction.effects:
         _openRecentPhoto();
+    }
+  }
+
+  Future<void> _importMedia() async {
+    final type = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: studioSurface,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_outlined, color: studioGreen),
+              title: const Text('Import a photo'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.video_library_outlined,
+                color: studioGreen,
+              ),
+              title: const Text('Import a video'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (type == null || !mounted) return;
+    try {
+      final picker = ImagePicker();
+      final selected = type
+          ? await picker.pickVideo(source: ImageSource.gallery)
+          : await picker.pickImage(source: ImageSource.gallery);
+      if (selected == null) return;
+      final media = await MediaLibrary.addCapture(selected.path, isVideo: type);
+      _onCaptureSaved(media);
+      if (mounted) {
+        setState(() => _selectedTab = 1);
+        _showMessage('Imported to Jerman Gallery.');
+      }
+    } catch (error) {
+      if (mounted) _showMessage('Media could not be imported: $error');
     }
   }
 
@@ -404,7 +452,11 @@ class _StudioShellState extends State<StudioShell> {
   void _openEditor(StudioMedia media) {
     if (media.isVideo) {
       _pushPage(
-        StudioVideoEditorPage(media: media, onProjectSaved: _onProjectSaved),
+        StudioVideoEditorPage(
+          media: media,
+          onProjectSaved: _onProjectSaved,
+          onMediaExported: _onCaptureSaved,
+        ),
       );
     } else {
       _pushPage(StudioPhotoEditorPage(media: media, onSaved: _onCaptureSaved));

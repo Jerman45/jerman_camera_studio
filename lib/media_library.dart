@@ -62,6 +62,39 @@ class StudioProject {
   );
 }
 
+class StudioCaptureSettings {
+  const StudioCaptureSettings({
+    this.resolution = 'High',
+    this.framesPerSecond = 30,
+    this.addWatermark = false,
+    this.autoEnhanceCaptures = false,
+    this.showCompositionGrid = true,
+  });
+
+  final String resolution;
+  final int framesPerSecond;
+  final bool addWatermark;
+  final bool autoEnhanceCaptures;
+  final bool showCompositionGrid;
+
+  Map<String, Object> toJson() => {
+    'resolution': resolution,
+    'framesPerSecond': framesPerSecond,
+    'addWatermark': addWatermark,
+    'autoEnhanceCaptures': autoEnhanceCaptures,
+    'showCompositionGrid': showCompositionGrid,
+  };
+
+  factory StudioCaptureSettings.fromJson(Map<String, dynamic> json) =>
+      StudioCaptureSettings(
+        resolution: json['resolution'] as String? ?? 'High',
+        framesPerSecond: (json['framesPerSecond'] as num?)?.toInt() ?? 30,
+        addWatermark: json['addWatermark'] as bool? ?? false,
+        autoEnhanceCaptures: json['autoEnhanceCaptures'] as bool? ?? false,
+        showCompositionGrid: json['showCompositionGrid'] as bool? ?? true,
+      );
+}
+
 abstract final class MediaLibrary {
   static Future<Directory> _mediaDirectory() async {
     final documents = await getApplicationDocumentsDirectory();
@@ -179,5 +212,27 @@ abstract final class MediaLibrary {
       jsonEncode(updated.map((entry) => entry.toJson()).toList()),
       flush: true,
     );
+  }
+
+  static Future<File> _settingsFile() async {
+    final documents = await getApplicationDocumentsDirectory();
+    final directory = Directory('${documents.path}/JermanCameraStudio');
+    await directory.create(recursive: true);
+    return File('${directory.path}/settings.json');
+  }
+
+  static Future<StudioCaptureSettings> loadSettings() async {
+    final file = await _settingsFile();
+    if (!await file.exists()) return const StudioCaptureSettings();
+    final data = jsonDecode(await file.readAsString());
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Studio settings must contain an object.');
+    }
+    return StudioCaptureSettings.fromJson(data);
+  }
+
+  static Future<void> saveSettings(StudioCaptureSettings settings) async {
+    final file = await _settingsFile();
+    await file.writeAsString(jsonEncode(settings.toJson()), flush: true);
   }
 }
