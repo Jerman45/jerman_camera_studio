@@ -1,9 +1,19 @@
 # Jerman Camera Studio
 
-Jerman Camera Studio is a Flutter camera app for Android with a live camera
-viewfinder, photo capture, video recording, front/rear camera switching, flash,
-tap-to-focus, exposure and zoom controls, and a composition grid. Captures are
+Jerman Camera Studio is an Android camera and creative app built with Flutter.
+It includes a branded splash and home screen, live photo/video capture,
+front/rear camera switching, flash, tap-to-focus, exposure and zoom controls,
+and a composition grid.
+
+The app also includes a persistent in-app gallery, photo editor with adjustable
+filters and brightness, video preview/editor, saved video projects, profile,
+settings, and About pages. Captures are kept in the app gallery and can also be
 saved to the device gallery.
+
+Photo filters and brightness adjustments are applied to exported images. Video
+projects save edit settings and preview playback; rendered video export, audio
+mixing, transitions, split rendering, and some photo tools are not yet
+implemented.
 
 ## Run on Android
 
