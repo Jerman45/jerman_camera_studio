@@ -10,18 +10,20 @@ projects, profile, settings, and About pages. Camera settings control capture
 quality, video frame rate, the composition grid, optional photo watermarking,
 and optional on-device auto enhancement.
 
-The photo editor includes Natural, Professional, and Cinematic presets,
-brightness/contrast/saturation controls, crop ratios, rotation, before/after
-comparison, optional watermarking, reset, and gallery export. Smart enhancement
-uses local brightness, contrast, color, and sharpening adjustments; it does not
-use a trained AI model.
+The photo editor analyzes image dimensions and lighting, then offers Smart
+Enhance, HD Upscale, Restore, and Cinematic modes, plus brightness/contrast/
+saturation controls, crop ratios, rotation, before/after comparison, optional
+watermarking, reset, and gallery export. HD Upscale uses cubic resampling up to
+2× (with an output memory limit); Restore uses conventional denoising and
+sharpening. These are offline image-processing effects, not AI inference, and
+cannot reconstruct missing details. No AI model is bundled. AI portrait
+segmentation, background effects, and AI super-resolution are not implemented.
 
 The Android video editor can trim and split clips into MP4 exports using
 keyframe-aligned native media processing, then save them to the app and device
 galleries. Playback speed, music, titles, and transitions are project settings
-and are not rendered into the exported video. Portrait-background replacement,
-object removal, AI upscaling, audio mixing, and rendered titles/transitions are
-not implemented.
+and are not rendered into the exported video. Object removal, audio mixing, and
+rendered titles/transitions are not implemented.
 
 ## Run on Android
 

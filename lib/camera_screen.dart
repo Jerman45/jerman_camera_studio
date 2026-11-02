@@ -344,7 +344,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
             'rotation': 0,
             'cropRatio': -1.0,
             'watermark': _captureSettings.addWatermark,
-            'autoEnhance': true,
+            'mode': 'smart',
           },
         );
         media = await MediaLibrary.addEditedPhoto(bytes);

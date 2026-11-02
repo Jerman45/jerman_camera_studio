@@ -1418,13 +1418,14 @@ class StudioPhotoEditorPage extends StatefulWidget {
 }
 
 class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
-  static const _filters = [
-    _PhotoFilter('Natural', 1, 0, 1),
-    _PhotoFilter('Professional', 1.12, 0, 1.08),
-    _PhotoFilter('Cinematic', 1.14, -3, .88),
+  static const _graphicsModes = [
+    _GraphicsMode('smart', 'Smart', Icons.auto_awesome_rounded),
+    _GraphicsMode('hd', 'HD 2×', Icons.hd_rounded),
+    _GraphicsMode('restore', 'Restore', Icons.healing_rounded),
+    _GraphicsMode('cinematic', 'Cinema', Icons.movie_filter_rounded),
   ];
 
-  int _selectedFilter = 0;
+  String _selectedMode = 'smart';
   double _brightness = 1;
   double _contrast = 1;
   double _saturation = 1;
@@ -1432,12 +1433,17 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   int _rotation = 0;
   String _adjustment = 'Brightness';
   bool _isShowingOriginal = false;
-  bool _autoEnhance = false;
   bool _watermark = false;
   bool _defaultWatermark = false;
   bool _isSaving = false;
+  bool _isAnalyzing = true;
+  bool _isPreviewProcessing = true;
+  Map<String, Object>? _analysis;
+  Uint8List? _previewBytes;
+  String? _previewError;
+  Timer? _previewTimer;
+  int _previewRevision = 0;
 
-  _PhotoFilter get _filter => _filters[_selectedFilter];
   double get _adjustmentValue => switch (_adjustment) {
     'Brightness' => _brightness,
     'Contrast' => _contrast,
@@ -1448,6 +1454,150 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   void initState() {
     super.initState();
     unawaited(_loadPhotoSettings());
+    unawaited(_analyzeCurrentPhoto());
+    _queuePreview();
+  }
+
+  Future<void> _analyzeCurrentPhoto() async {
+    setState(() => _isAnalyzing = true);
+    try {
+      final analysis = await compute<Map<String, Object>, Map<String, Object>>(
+        analyzePhoto,
+        {'path': widget.media.path},
+      );
+      if (!mounted) return;
+      setState(() {
+        _analysis = analysis;
+        _isAnalyzing = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isAnalyzing = false);
+      _showEditorMessage('Photo analysis failed: $error');
+    }
+  }
+
+  void _selectGraphicsMode(String mode) {
+    setState(() {
+      _selectedMode = mode;
+      if (mode == 'cinematic') _adjustment = 'Contrast';
+    });
+    _queuePreview();
+  }
+
+  Map<String, Object> _processingSettings({int? previewMaxDimension}) {
+    final settings = <String, Object>{
+      'path': widget.media.path,
+      'mode': _selectedMode,
+      'brightness': _brightness,
+      'contrast': _contrast,
+      'saturation': _saturation,
+      'hue': 0.0,
+      'rotation': _rotation,
+      'cropRatio': _cropRatio,
+      'watermark': _watermark,
+    };
+    if (previewMaxDimension case final dimension?) {
+      settings['previewMaxDimension'] = dimension;
+    }
+    return settings;
+  }
+
+  void _queuePreview() {
+    _previewTimer?.cancel();
+    final revision = ++_previewRevision;
+    setState(() {
+      _isPreviewProcessing = true;
+      _previewError = null;
+    });
+    _previewTimer = Timer(const Duration(milliseconds: 220), () {
+      unawaited(_renderPreview(revision));
+    });
+  }
+
+  Future<void> _renderPreview(int revision) async {
+    try {
+      final bytes = await compute<Map<String, Object>, Uint8List>(
+        processPhoto,
+        _processingSettings(previewMaxDimension: 900),
+      );
+      if (!mounted || revision != _previewRevision) return;
+      setState(() {
+        _previewBytes = bytes;
+        _isPreviewProcessing = false;
+      });
+    } catch (error) {
+      if (!mounted || revision != _previewRevision) return;
+      setState(() {
+        _previewError = '$error';
+        _isPreviewProcessing = false;
+      });
+    }
+  }
+
+  Widget _buildAnalysisSummary() {
+    final analysis = _analysis;
+    final luminance = analysis?['averageLuminance'] as double?;
+    final recommendedMode = analysis?['recommendation'] as String?;
+    final imageSize = analysis == null
+        ? 'Analyzing image…'
+        : '${analysis['width']} × ${analysis['height']}';
+    final lighting = luminance == null
+        ? ''
+        : luminance < 95
+        ? 'Low light'
+        : luminance > 178
+        ? 'Bright'
+        : 'Balanced light';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: studioSurface,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: studioLine),
+      ),
+      child: Row(
+        children: [
+          if (_isAnalyzing)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: studioGreen,
+              ),
+            )
+          else
+            const Icon(Icons.analytics_outlined, color: studioGreen, size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              [
+                imageSize,
+                if (lighting.isNotEmpty) lighting,
+                if (recommendedMode != null)
+                  'Suggested: ${_modeLabel(recommendedMode)}',
+              ].join('  ·  '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: studioMuted,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _previewTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadPhotoSettings() async {
@@ -1458,6 +1608,7 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
           _watermark = settings.addWatermark;
           _defaultWatermark = settings.addWatermark;
         });
+        _queuePreview();
       }
     } catch (error) {
       if (mounted) _showEditorMessage('Settings could not be loaded: $error');
@@ -1545,9 +1696,7 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                                 child: Text(
                                   _isShowingOriginal
                                       ? 'ORIGINAL'
-                                      : _autoEnhance
-                                      ? 'SMART ENHANCE ON SAVE'
-                                      : 'HOLD TO COMPARE',
+                                      : 'EDITED · ${_modeLabel(_selectedMode).toUpperCase()}',
                                   style: const TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w800,
@@ -1556,34 +1705,69 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                               ),
                             ),
                           ),
+                          if (_isPreviewProcessing)
+                            const Positioned(
+                              right: 12,
+                              top: 12,
+                              child: SizedBox(
+                                width: 17,
+                                height: 17,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: studioGreen,
+                                ),
+                              ),
+                            ),
+                          if (_previewError != null)
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              bottom: 12,
+                              child: Text(
+                                'Preview could not be processed: $_previewError',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 13),
+              const SizedBox(height: 8),
+              _buildAnalysisSummary(),
+              const SizedBox(height: 7),
               SizedBox(
-                height: 81,
+                height: 68,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  itemCount: _filters.length,
+                  itemCount: _graphicsModes.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 9),
                   itemBuilder: (context, index) {
-                    final filter = _filters[index];
-                    return _PresetCard(
-                      label: filter.name,
-                      selected: index == _selectedFilter,
-                      media: widget.media,
-                      filter: _previewFilter(
-                        filter,
-                        _brightness,
-                        _contrast,
-                        _saturation,
-                      ),
-                      onTap: () => setState(() => _selectedFilter = index),
+                    final mode = _graphicsModes[index];
+                    return _GraphicsModeCard(
+                      mode: mode,
+                      selected: _selectedMode == mode.id,
+                      onTap: () => _selectGraphicsMode(mode.id),
                     );
                   },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 5, bottom: 1),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _modeDescription(_selectedMode),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: studioMuted, fontSize: 9),
+                  ),
                 ),
               ),
               const SizedBox(height: 9),
@@ -1617,16 +1801,19 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                       value: _adjustmentValue,
                       min: _adjustment == 'Brightness' ? .5 : .5,
                       max: _adjustment == 'Brightness' ? 1.5 : 1.7,
-                      onChanged: (value) => setState(() {
-                        switch (_adjustment) {
-                          case 'Brightness':
-                            _brightness = value;
-                          case 'Contrast':
-                            _contrast = value;
-                          case 'Saturation':
-                            _saturation = value;
-                        }
-                      }),
+                      onChanged: (value) {
+                        setState(() {
+                          switch (_adjustment) {
+                            case 'Brightness':
+                              _brightness = value;
+                            case 'Contrast':
+                              _contrast = value;
+                            case 'Saturation':
+                              _saturation = value;
+                          }
+                        });
+                        _queuePreview();
+                      },
                     ),
                   ),
                 ],
@@ -1641,8 +1828,10 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                   _EditorTool(
                     icon: Icons.rotate_right_rounded,
                     label: 'Rotate',
-                    onTap: () =>
-                        setState(() => _rotation = (_rotation + 1) % 4),
+                    onTap: () {
+                      setState(() => _rotation = (_rotation + 1) % 4);
+                      _queuePreview();
+                    },
                   ),
                   _EditorTool(
                     icon: Icons.tune_rounded,
@@ -1652,30 +1841,25 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                   ),
                   _EditorTool(
                     icon: Icons.auto_awesome_outlined,
-                    label: 'Enhance',
-                    onTap: () {
-                      setState(() {
-                        _autoEnhance = !_autoEnhance;
-                        if (_autoEnhance) _selectedFilter = 1;
-                      });
-                      _showEditorMessage(
-                        _autoEnhance
-                            ? 'On-device smart enhancement enabled. No AI model or internet is used.'
-                            : 'Smart enhancement disabled.',
-                      );
-                    },
+                    label: 'Analyze',
+                    onTap: _analyzeCurrentPhoto,
                   ),
                   _EditorTool(
                     icon: Icons.branding_watermark_outlined,
                     label: 'Watermark',
                     selected: _watermark,
-                    onTap: () => setState(() => _watermark = !_watermark),
+                    onTap: () {
+                      setState(() => _watermark = !_watermark);
+                      _queuePreview();
+                    },
                   ),
                 ],
               ),
               const Text(
-                'Natural · Professional · Cinematic  |  On-device processing on save',
+                'HD and Restore are offline filters, not AI models. AI portrait masking is not available yet.',
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: studioMuted, fontSize: 9),
               ),
             ],
@@ -1690,17 +1874,7 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
     try {
       final bytes = await compute<Map<String, Object>, Uint8List>(
         processPhoto,
-        {
-          'path': widget.media.path,
-          'brightness': _brightness,
-          'contrast': _filter.contrast * _contrast,
-          'saturation': _filter.saturation * _saturation,
-          'hue': _filter.hue,
-          'rotation': _rotation,
-          'cropRatio': _cropRatio,
-          'watermark': _watermark,
-          'autoEnhance': _autoEnhance,
-        },
+        _processingSettings(),
       );
       final saved = await MediaLibrary.addEditedPhoto(bytes);
       widget.onSaved(saved);
@@ -1727,19 +1901,26 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   }
 
   Widget _photoPreview() {
-    final image = Image.file(
-      File(widget.media.path),
-      fit: _isShowingOriginal ? BoxFit.contain : BoxFit.cover,
+    if (_isShowingOriginal || _previewBytes == null) {
+      return Image.file(
+        File(widget.media.path),
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => const _EmptyState(
+          icon: Icons.broken_image_outlined,
+          title: 'Photo unavailable',
+          message: 'This image could not be opened.',
+        ),
+      );
+    }
+    return Image.memory(
+      _previewBytes!,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
       errorBuilder: (context, error, stackTrace) => const _EmptyState(
         icon: Icons.broken_image_outlined,
-        title: 'Photo unavailable',
-        message: 'This image could not be opened.',
+        title: 'Preview unavailable',
+        message: 'The processed preview could not be displayed.',
       ),
-    );
-    if (_isShowingOriginal) return image;
-    return ColorFiltered(
-      colorFilter: _previewFilter(_filter, _brightness, _contrast, _saturation),
-      child: RotatedBox(quarterTurns: _rotation, child: image),
     );
   }
 
@@ -1770,7 +1951,10 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
         ),
       ),
     );
-    if (selected != null) setState(() => _cropRatio = selected);
+    if (selected != null) {
+      setState(() => _cropRatio = selected);
+      _queuePreview();
+    }
   }
 
   void _chooseAdjustment() {
@@ -1779,16 +1963,16 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
 
   void _resetEdits() {
     setState(() {
-      _selectedFilter = 0;
+      _selectedMode = 'smart';
       _brightness = 1;
       _contrast = 1;
       _saturation = 1;
       _cropRatio = -1;
       _rotation = 0;
-      _autoEnhance = false;
       _watermark = _defaultWatermark;
       _isShowingOriginal = false;
     });
+    _queuePreview();
   }
 
   void _showEditorMessage(String message) {
@@ -1798,111 +1982,76 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   }
 }
 
-class _PhotoFilter {
-  const _PhotoFilter(this.name, this.contrast, this.hue, this.saturation);
+class _GraphicsMode {
+  const _GraphicsMode(this.id, this.label, this.icon);
 
-  final String name;
-  final double contrast;
-  final double hue;
-  final double saturation;
+  final String id;
+  final String label;
+  final IconData icon;
 }
 
-ColorFilter _previewFilter(
-  _PhotoFilter filter,
-  double brightness,
-  double manualContrast,
-  double manualSaturation,
-) {
-  if (filter.name == 'Natural' &&
-      brightness == 1 &&
-      manualContrast == 1 &&
-      manualSaturation == 1) {
-    return const ColorFilter.mode(Colors.transparent, BlendMode.srcOver);
-  }
-  final saturation = filter.saturation * manualSaturation;
-  final inverse = 1 - saturation;
-  final red = .213 * inverse;
-  final green = .715 * inverse;
-  final blue = .072 * inverse;
-  final scale = filter.contrast * manualContrast * brightness;
-  return ColorFilter.matrix([
-    (red + saturation) * scale,
-    green * scale,
-    blue * scale,
-    0,
-    0,
-    red * scale,
-    (green + saturation) * scale,
-    blue * scale,
-    0,
-    0,
-    red * scale,
-    green * scale,
-    (blue + saturation) * scale,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ]);
-}
+String _modeLabel(String id) => switch (id) {
+  'smart' => 'Smart Enhance',
+  'hd' => 'HD 2×',
+  'restore' => 'Restore',
+  'cinematic' => 'Cinematic',
+  _ => id,
+};
 
-class _PresetCard extends StatelessWidget {
-  const _PresetCard({
-    required this.label,
+String _modeDescription(String id) => switch (id) {
+  'smart' => 'Balances exposure, contrast and color from image analysis.',
+  'hd' => 'Cubic resize up to 2×; no AI detail reconstruction.',
+  'restore' => 'Mild offline denoise and sharpening for apparent clarity.',
+  'cinematic' => 'Adds contrast and a restrained cinematic color grade.',
+  _ => '',
+};
+
+class _GraphicsModeCard extends StatelessWidget {
+  const _GraphicsModeCard({
+    required this.mode,
     required this.selected,
-    required this.media,
-    required this.filter,
     required this.onTap,
   });
 
-  final String label;
+  final _GraphicsMode mode;
   final bool selected;
-  final StudioMedia media;
-  final ColorFilter filter;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: 68,
-        child: Column(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: ColorFiltered(
-                  colorFilter: filter,
-                  child: MediaPreview(media: media),
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-              decoration: BoxDecoration(
-                color: selected ? studioGreen : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? studioBackground : studioMuted,
-                ),
-              ),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(13),
+    child: Container(
+      width: 82,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFF15351F) : studioSurface,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: selected ? studioGreen : studioLine),
       ),
-    );
-  }
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            mode.icon,
+            color: selected ? studioGreen : studioMuted,
+            size: 20,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            mode.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: selected ? studioGreen : Colors.white,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class StudioVideoEditorPage extends StatefulWidget {
