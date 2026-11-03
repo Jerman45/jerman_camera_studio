@@ -1,8 +1,0 @@
-User-agent: *
-Allow: /
-Disallow: /installer-build/
-Disallow: /deploy/
-Disallow: /pages/signin.html
-Disallow: /pages/signup.html
-
-Sitemap: https://jermancompany.netlify.app/sitemap.xml
