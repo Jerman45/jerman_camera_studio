@@ -18,8 +18,11 @@ gently lifts shadows, protects highlights and sharpens globally; it does not
 detect faces or create studio lighting. HD Upscale uses cubic resampling up to
 2× (with an output memory limit); Restore uses conventional denoising and
 sharpening. These are offline image-processing effects, not AI inference, and
-cannot reconstruct missing details. No AI model is bundled. AI portrait
-segmentation, background effects, and AI super-resolution are not implemented.
+cannot reconstruct missing details. The Android photo editor includes real
+on-device subject segmentation through Google's ML Kit for transparent PNG
+background removal. The model runs locally; source photos are not uploaded.
+Text-prompt background generation, AI super-resolution, face-aware portrait
+retouching, and AI effects are not implemented.
 
 The photo camera also has an optional full-body portrait framing guide to help
 keep subjects within the frame; it is a composition aid, not person detection.
@@ -28,7 +31,17 @@ The Android video editor can trim and split clips into MP4 exports using
 keyframe-aligned native media processing, then save them to the app and device
 galleries. Playback speed, music, titles, and transitions are project settings
 and are not rendered into the exported video. Object removal, audio mixing, and
-rendered titles/transitions are not implemented.
+rendered titles/transitions are not implemented. Cloud AI features (including
+video enhancement, editing assistant, and captions) require a configured,
+secured backend and are not yet available.
+
+To run the ML Kit integration check on an Android device, place a portrait test
+photo at
+`/sdcard/Android/data/com.example.jerman_camera_studio/files/ai-segmentation-test.jpg`,
+then run
+`flutter test integration_test/ai_background_removal_test.dart -d <device-id> --dart-define=RUN_ML_KIT_DEVICE_TEST=true`.
+The integration test deletes its temporary device-side test copy when it
+finishes.
 
 ## Run on Android
 

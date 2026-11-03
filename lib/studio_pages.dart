@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 
 import 'media_library.dart';
 import 'photo_processing.dart';
+import 'ai/ai_background_removal_service.dart';
 
 const studioBackground = Color(0xFF030704);
 const studioSurface = Color(0xFF0D160F);
@@ -1434,6 +1435,8 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   int _rotation = 0;
   String _adjustment = 'Brightness';
   bool _isShowingOriginal = false;
+  bool _isRemovingBackground = false;
+  bool _hasBackgroundRemoved = false;
   bool _watermark = false;
   bool _defaultWatermark = false;
   bool _isSaving = false;
@@ -1441,9 +1444,11 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   bool _isPreviewProcessing = true;
   Map<String, Object>? _analysis;
   Uint8List? _previewBytes;
+  Uint8List? _cutoutSourceBytes;
   String? _previewError;
   Timer? _previewTimer;
   int _previewRevision = 0;
+  final _backgroundRemovalService = AiBackgroundRemovalService();
 
   double get _adjustmentValue => switch (_adjustment) {
     'Brightness' => _brightness,
@@ -1488,7 +1493,6 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
 
   Map<String, Object> _processingSettings({int? previewMaxDimension}) {
     final settings = <String, Object>{
-      'path': widget.media.path,
       'mode': _selectedMode,
       'brightness': _brightness,
       'contrast': _contrast,
@@ -1497,7 +1501,13 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
       'rotation': _rotation,
       'cropRatio': _cropRatio,
       'watermark': _watermark,
+      'transparentBackground': _hasBackgroundRemoved,
     };
+    if (_cutoutSourceBytes case final sourceBytes?) {
+      settings['sourceBytes'] = sourceBytes;
+    } else {
+      settings['path'] = widget.media.path;
+    }
     if (previewMaxDimension case final dimension?) {
       settings['previewMaxDimension'] = dimension;
     }
@@ -1633,11 +1643,15 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                   children: [
                     IconButton(
                       tooltip: 'Reset edits',
-                      onPressed: _isSaving ? null : _resetEdits,
+                      onPressed: _isSaving || _isRemovingBackground
+                          ? null
+                          : _resetEdits,
                       icon: const Icon(Icons.undo_rounded),
                     ),
                     FilledButton(
-                      onPressed: _isSaving ? null : _saveEditedPhoto,
+                      onPressed: _isSaving || _isRemovingBackground
+                          ? null
+                          : _saveEditedPhoto,
                       style: FilledButton.styleFrom(
                         backgroundColor: studioGreen,
                         foregroundColor: studioBackground,
@@ -1697,6 +1711,8 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                                 child: Text(
                                   _isShowingOriginal
                                       ? 'ORIGINAL'
+                                      : _hasBackgroundRemoved
+                                      ? 'AI CUTOUT · ORIGINAL BACKGROUND REMOVED'
                                       : 'EDITED · ${_modeLabel(_selectedMode).toUpperCase()}',
                                   style: const TextStyle(
                                     fontSize: 9,
@@ -1819,6 +1835,27 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                   ),
                 ],
               ),
+              if (_isRemovingBackground)
+                const Padding(
+                  padding: EdgeInsets.only(top: 5, bottom: 3),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: studioGreen,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Running on-device subject segmentation…',
+                        style: TextStyle(color: studioMuted, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
               Row(
                 children: [
                   _EditorTool(
@@ -1841,9 +1878,16 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                     onTap: _chooseAdjustment,
                   ),
                   _EditorTool(
-                    icon: Icons.auto_awesome_outlined,
-                    label: 'Analyze',
-                    onTap: _analyzeCurrentPhoto,
+                    icon: _hasBackgroundRemoved
+                        ? Icons.person_rounded
+                        : Icons.person_remove_rounded,
+                    label: _isRemovingBackground
+                        ? 'Processing'
+                        : _hasBackgroundRemoved
+                        ? 'Cutout ✓'
+                        : 'AI Cutout',
+                    selected: _hasBackgroundRemoved,
+                    onTap: _removeBackground,
                   ),
                   _EditorTool(
                     icon: Icons.branding_watermark_outlined,
@@ -1857,7 +1901,7 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
                 ],
               ),
               const Text(
-                'HD and Restore are offline filters, not AI models. AI portrait masking is not available yet.',
+                'Cutout uses on-device ML Kit segmentation; photo stays on this device. No AI model is used for other modes.',
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -1871,13 +1915,17 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   }
 
   Future<void> _saveEditedPhoto() async {
+    if (_isRemovingBackground) return;
     setState(() => _isSaving = true);
     try {
       final bytes = await compute<Map<String, Object>, Uint8List>(
         processPhoto,
         _processingSettings(),
       );
-      final saved = await MediaLibrary.addEditedPhoto(bytes);
+      final saved = await MediaLibrary.addEditedPhoto(
+        bytes,
+        extension: _hasBackgroundRemoved ? '.png' : '.jpg',
+      );
       widget.onSaved(saved);
       try {
         var hasAccess = await Gal.hasAccess();
@@ -1898,6 +1946,32 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
       if (mounted) _showEditorMessage('Could not save edited photo: $error');
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _removeBackground() async {
+    if (_isRemovingBackground || _isSaving) return;
+    setState(() => _isRemovingBackground = true);
+    try {
+      final cutout = await _backgroundRemovalService.removeBackground(
+        widget.media.path,
+      );
+      if (!mounted) return;
+      setState(() {
+        _cutoutSourceBytes = cutout;
+        _hasBackgroundRemoved = true;
+        _selectedMode = 'smart';
+      });
+      _queuePreview();
+      _showEditorMessage(
+        'Background removed on-device. Your original photo was preserved.',
+      );
+    } catch (error) {
+      if (mounted) {
+        _showEditorMessage('AI background removal failed: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _isRemovingBackground = false);
     }
   }
 
@@ -1972,6 +2046,8 @@ class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
       _rotation = 0;
       _watermark = _defaultWatermark;
       _isShowingOriginal = false;
+      _cutoutSourceBytes = null;
+      _hasBackgroundRemoved = false;
     });
     _queuePreview();
   }

@@ -136,8 +136,21 @@ abstract final class MediaLibrary {
     );
   }
 
-  static Future<StudioMedia> addEditedPhoto(Uint8List bytes) async {
-    final file = await _uniqueFile('.jpg');
+  static Future<StudioMedia> addEditedPhoto(
+    Uint8List bytes, {
+    String extension = '.jpg',
+  }) async {
+    final normalizedExtension = extension.startsWith('.')
+        ? extension.toLowerCase()
+        : '.${extension.toLowerCase()}';
+    if (!const {'.jpg', '.jpeg', '.png'}.contains(normalizedExtension)) {
+      throw ArgumentError.value(
+        extension,
+        'extension',
+        'Unsupported image type.',
+      );
+    }
+    final file = await _uniqueFile(normalizedExtension);
     await file.writeAsBytes(bytes, flush: true);
     return StudioMedia(
       path: file.path,

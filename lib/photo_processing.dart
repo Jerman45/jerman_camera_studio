@@ -58,8 +58,12 @@ Map<String, Object> analyzePhoto(Map<String, Object> settings) {
 }
 
 Uint8List processPhoto(Map<String, Object> settings) {
-  final path = settings['path']! as String;
-  final decoded = img.decodeImage(File(path).readAsBytesSync());
+  final sourceBytes = settings['sourceBytes'] as Uint8List?;
+  final path = settings['path'] as String?;
+  if (sourceBytes == null && path == null) {
+    throw ArgumentError('An image path or source bytes are required.');
+  }
+  final decoded = img.decodeImage(sourceBytes ?? File(path!).readAsBytesSync());
   if (decoded == null) {
     throw const FormatException('Unsupported or invalid photo.');
   }
@@ -176,7 +180,11 @@ Uint8List processPhoto(Map<String, Object> settings) {
     );
   }
 
-  return Uint8List.fromList(img.encodeJpg(output, quality: 94));
+  return Uint8List.fromList(
+    settings['transparentBackground'] == true
+        ? img.encodePng(output, level: 6)
+        : img.encodeJpg(output, quality: 94),
+  );
 }
 
 void _applyStudioPortraitLighting(img.Image image) {

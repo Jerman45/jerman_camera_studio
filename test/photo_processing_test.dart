@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:jerman_camera_studio/ai/ai_background_removal_service.dart';
 import 'package:jerman_camera_studio/photo_processing.dart';
 
 void main() {
@@ -120,4 +121,21 @@ void main() {
       expect(decoded.getPixel(10, 6).r, greaterThan(40));
     },
   );
+
+  test('on-device segmentation mask produces a transparent PNG cutout', () {
+    final image = img.Image(width: 2, height: 1, numChannels: 4);
+    image.setPixelRgba(0, 0, 255, 0, 0, 255);
+    image.setPixelRgba(1, 0, 0, 255, 0, 255);
+
+    final result = applyForegroundMask({
+      'sourceBytes': Uint8List.fromList(img.encodePng(image)),
+      'maskWidth': 2,
+      'maskHeight': 1,
+      'confidences': <double>[1.0, 0.0],
+    });
+    final cutout = img.decodePng(result)!;
+
+    expect(cutout.getPixel(0, 0).a, 255);
+    expect(cutout.getPixel(1, 0).a, 0);
+  });
 }
