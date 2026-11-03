@@ -1420,6 +1420,7 @@ class StudioPhotoEditorPage extends StatefulWidget {
 class _StudioPhotoEditorPageState extends State<StudioPhotoEditorPage> {
   static const _graphicsModes = [
     _GraphicsMode('smart', 'Smart', Icons.auto_awesome_rounded),
+    _GraphicsMode('studio', 'Studio', Icons.portrait_rounded),
     _GraphicsMode('hd', 'HD 2×', Icons.hd_rounded),
     _GraphicsMode('restore', 'Restore', Icons.healing_rounded),
     _GraphicsMode('cinematic', 'Cinema', Icons.movie_filter_rounded),
@@ -1992,6 +1993,7 @@ class _GraphicsMode {
 
 String _modeLabel(String id) => switch (id) {
   'smart' => 'Smart Enhance',
+  'studio' => 'Studio Portrait',
   'hd' => 'HD 2×',
   'restore' => 'Restore',
   'cinematic' => 'Cinematic',
@@ -2000,6 +2002,7 @@ String _modeLabel(String id) => switch (id) {
 
 String _modeDescription(String id) => switch (id) {
   'smart' => 'Balances exposure, contrast and color from image analysis.',
+  'studio' => 'Gently lifts shadows, protects highlights and sharpens without face detection.',
   'hd' => 'Cubic resize up to 2×; no AI detail reconstruction.',
   'restore' => 'Mild offline denoise and sharpening for apparent clarity.',
   'cinematic' => 'Adds contrast and a restrained cinematic color grade.',

@@ -38,6 +38,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   bool _isLoading = true;
   bool _isBusy = false;
   bool _showGrid = false;
+  bool _showPortraitGuide = false;
   bool _isRecording = false;
   StudioCaptureSettings _captureSettings = const StudioCaptureSettings();
   late CameraCaptureMode _mode = widget.initialMode;
@@ -516,6 +517,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
             ),
             if (_showGrid)
               const IgnorePointer(child: CustomPaint(painter: _GridPainter())),
+            if (_showPortraitGuide && _mode == CameraCaptureMode.photo)
+              const IgnorePointer(
+                child: CustomPaint(painter: _PortraitGuidePainter()),
+              ),
             if (_focusPoint case final point?)
               Positioned(
                 left: point.dx * previewSize.width - 22,
@@ -549,6 +554,18 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                     label: 'Flash $_flashName',
                     onPressed: _cycleFlashMode,
                   ),
+                  if (_mode == CameraCaptureMode.photo)
+                    _PreviewIconButton(
+                      icon: _showPortraitGuide
+                          ? Icons.accessibility_new_rounded
+                          : Icons.accessibility_new_outlined,
+                      label: _showPortraitGuide
+                          ? 'Hide full-body portrait guide'
+                          : 'Show full-body portrait guide',
+                      onPressed: () => setState(
+                        () => _showPortraitGuide = !_showPortraitGuide,
+                      ),
+                    ),
                   _PreviewIconButton(
                     icon: _showGrid ? Icons.grid_on_rounded : Icons.grid_3x3,
                     label: _showGrid ? 'Hide grid' : 'Show grid',
@@ -849,6 +866,99 @@ class _GridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GridPainter oldDelegate) => false;
+}
+
+class _PortraitGuidePainter extends CustomPainter {
+  const _PortraitGuidePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final guideWidth = size.width * .72;
+    final guideHeight = size.height * .82;
+    final left = (size.width - guideWidth) / 2;
+    final top = (size.height - guideHeight) / 2;
+    final guide = Rect.fromLTWH(left, top, guideWidth, guideHeight);
+    final line = Paint()
+      ..color = Colors.white.withValues(alpha: .72)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final softLine = Paint()
+      ..color = Colors.white.withValues(alpha: .48)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(guide, const Radius.circular(18)),
+      line,
+    );
+
+    final centerX = guide.center.dx;
+    final headRadius = guideWidth * .105;
+    final headCenter = Offset(centerX, top + guideHeight * .19);
+    canvas.drawOval(
+      Rect.fromCircle(center: headCenter, radius: headRadius),
+      softLine,
+    );
+
+    final shouldersY = headCenter.dy + headRadius * 1.5;
+    final waistY = top + guideHeight * .57;
+    final hipsY = top + guideHeight * .69;
+    final figure = Path()
+      ..moveTo(centerX - headRadius * 1.9, shouldersY)
+      ..quadraticBezierTo(
+        centerX,
+        shouldersY - headRadius * .55,
+        centerX + headRadius * 1.9,
+        shouldersY,
+      )
+      ..lineTo(centerX + headRadius * 1.45, waistY)
+      ..lineTo(centerX + headRadius * 1.55, hipsY)
+      ..lineTo(centerX + headRadius * .63, hipsY)
+      ..lineTo(centerX + headRadius * .42, guide.bottom - guideHeight * .07)
+      ..moveTo(centerX - headRadius * .42, guide.bottom - guideHeight * .07)
+      ..lineTo(centerX - headRadius * .63, hipsY)
+      ..lineTo(centerX - headRadius * 1.55, hipsY)
+      ..lineTo(centerX - headRadius * 1.45, waistY)
+      ..close();
+    canvas.drawPath(figure, softLine);
+
+    final thirdsY = top + guideHeight / 3;
+    final thirdsPaint = Paint()
+      ..color = Colors.white.withValues(alpha: .23)
+      ..strokeWidth = .7;
+    canvas.drawLine(
+      Offset(left + 8, thirdsY),
+      Offset(guide.right - 8, thirdsY),
+      thirdsPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(left + 8, top + 8, guideWidth - 16, 24),
+        const Radius.circular(12),
+      ),
+      Paint()..color = Colors.black.withValues(alpha: .42),
+    );
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: 'FULL BODY  ·  HEADS ABOVE TOP THIRD',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 8,
+          fontWeight: FontWeight.w700,
+          letterSpacing: .35,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: guideWidth - 24);
+    textPainter.paint(
+      canvas,
+      Offset(guide.center.dx - textPainter.width / 2, top + 15),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PortraitGuidePainter oldDelegate) => false;
 }
 
 class _PreviewIconButton extends StatelessWidget {

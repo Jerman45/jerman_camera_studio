@@ -11,13 +11,18 @@ quality, video frame rate, the composition grid, optional photo watermarking,
 and optional on-device auto enhancement.
 
 The photo editor analyzes image dimensions and lighting, then offers Smart
-Enhance, HD Upscale, Restore, and Cinematic modes, plus brightness/contrast/
-saturation controls, crop ratios, rotation, before/after comparison, optional
-watermarking, reset, and gallery export. HD Upscale uses cubic resampling up to
+Enhance, Studio Portrait, HD Upscale, Restore, and Cinematic modes, plus
+brightness/contrast/saturation controls, crop ratios, rotation, before/after
+comparison, optional watermarking, reset, and gallery export. Studio Portrait
+gently lifts shadows, protects highlights and sharpens globally; it does not
+detect faces or create studio lighting. HD Upscale uses cubic resampling up to
 2× (with an output memory limit); Restore uses conventional denoising and
 sharpening. These are offline image-processing effects, not AI inference, and
 cannot reconstruct missing details. No AI model is bundled. AI portrait
 segmentation, background effects, and AI super-resolution are not implemented.
+
+The photo camera also has an optional full-body portrait framing guide to help
+keep subjects within the frame; it is a composition aid, not person detection.
 
 The Android video editor can trim and split clips into MP4 exports using
 keyframe-aligned native media processing, then save them to the app and device

@@ -89,4 +89,35 @@ void main() {
       expect(decoded.height, 12);
     }
   });
+
+  test(
+    'studio portrait mode lifts low light while preserving photo size',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'jerman-portrait-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final source = File('${directory.path}/source.png');
+      final image = img.Image(width: 20, height: 12);
+      img.fill(image, color: img.ColorRgb8(40, 42, 44));
+      await source.writeAsBytes(img.encodePng(image));
+
+      final result = processPhoto({
+        'path': source.path,
+        'brightness': 1.0,
+        'contrast': 1.0,
+        'saturation': 1.0,
+        'hue': 0.0,
+        'rotation': 0,
+        'cropRatio': -1.0,
+        'watermark': false,
+        'mode': 'studio',
+      });
+      final decoded = img.decodeImage(Uint8List.fromList(result));
+
+      expect(decoded!.width, 20);
+      expect(decoded.height, 12);
+      expect(decoded.getPixel(10, 6).r, greaterThan(40));
+    },
+  );
 }

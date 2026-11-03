@@ -94,6 +94,15 @@ Uint8List processPhoto(Map<String, Object> settings) {
     case 'cinematic':
       contrast *= 1.14;
       saturation *= .88;
+    case 'studio':
+      _applyStudioPortraitLighting(output);
+      contrast *= 1.04;
+      saturation *= .97;
+      output = img.convolution(
+        output,
+        filter: [0, -.2, 0, -.2, 1.8, -.2, 0, -.2, 0],
+        amount: .2,
+      );
     case 'hd':
       break;
     default:
@@ -168,6 +177,24 @@ Uint8List processPhoto(Map<String, Object> settings) {
   }
 
   return Uint8List.fromList(img.encodeJpg(output, quality: 94));
+}
+
+void _applyStudioPortraitLighting(img.Image image) {
+  for (final pixel in image) {
+    final luminance = _luminance(pixel.r, pixel.g, pixel.b) / 255;
+    final shadowWeight = math.pow(1 - luminance, 2);
+    final highlightWeight = math.pow(luminance, 2);
+    final adjustedLuminance =
+        (luminance + .075 * shadowWeight - .055 * highlightWeight).clamp(
+          .015,
+          .985,
+        );
+    final scale = luminance > 0 ? adjustedLuminance / luminance : 1.0;
+    pixel
+      ..r = (pixel.r * scale).clamp(0, 255)
+      ..g = (pixel.g * scale).clamp(0, 255)
+      ..b = (pixel.b * scale).clamp(0, 255);
+  }
 }
 
 _ImageStats _sampleImage(img.Image image) {
